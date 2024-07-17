@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import filedialog
-from tkinter import ttk
+from tkinter import filedialog, ttk
 import pandas as pd
+import csv
+import threading
 
 
 class NumericEntry(tk.Entry):
@@ -91,8 +92,10 @@ class CSVAnalyzer:
         self.selected_option = tk.StringVar(value="SwathAngle")
         # 添加錯誤窗口狀態標誌
         self.error_window_open = False
+        self.df = None
         self.create_widgets()
 
+    # 主要設計UI的位置
     def create_widgets(self):
         # 匯入檔案的按鈕和路徑顯示在同一列上
         top_frame = tk.Frame(self.root)
@@ -105,6 +108,9 @@ class CSVAnalyzer:
             top_frame, text="Browse CSV/TXT", command=self.browse_csv
         )
         self.browse_button.pack(side="left")
+
+        self.progress = ttk.Progressbar(self.root, orient=tk.HORIZONTAL, length=300, mode='determinate')
+        self.progress.pack(pady=10, fill='x', expand=True)
 
         # 選擇框的標籤和選擇框在同一列上
         selector_frame = tk.Frame(self.root)
@@ -121,12 +127,6 @@ class CSVAnalyzer:
             command=self.update_ui,
         )
         self.selector.pack(side="left", padx=5)
-
-        self.column_label = tk.Label(self.root, text="Enter Column Index:")
-        self.column_label.pack(pady=5)
-
-        self.column_entry = tk.Entry(self.root)
-        self.column_entry.pack(pady=5)
 
         # 深度異常值複選框
         self.extra_options_frame = tk.Frame(self.root)
@@ -151,15 +151,14 @@ class CSVAnalyzer:
         )
         self.thu_range_frame.pack(pady=5)
 
-        self.analyze_button = tk.Button(self.root, text="Analyze")
+        self.analyze_button = tk.Button(self.root, text="Analyze", command=self.analyze)
         self.analyze_button.pack(pady=10)
 
-        self.preview_tree = None
         self.result_tree = None
 
     def update_ui(self, value):
         if value == "TPU":
-            self.extra_options_frame.pack(pady=5, before=self.column_label)
+            self.extra_options_frame.pack(pady=5, before=self.analyze_button)
         else:
             self.extra_options_frame.pack_forget()
 
@@ -168,48 +167,77 @@ class CSVAnalyzer:
             filetypes=[("CSV and TXT files", "*.csv *.txt")]
         )
         self.label.config(text=f"Selected file: {self.file_path}")
-        self.show_preview()
+        threading.Thread(target=self.load_and_show_data).start()
 
-    def show_preview(self):
-        if not self.file_path:
-            return
-
-        if self.preview_tree:
-            self.preview_tree.destroy()
-
+    def load_and_show_data(self):
+        self.root.after(0, self.destroy_result_tree)
         try:
             df = self.load_data(self.file_path)
-            preview = df.head()
-
-            self.preview_tree = ttk.Treeview(self.root)
-            self.preview_tree["columns"] = list(preview.columns)
-            self.preview_tree["show"] = "headings"
-
-            for col in self.preview_tree["columns"]:
-                self.preview_tree.heading(col, text=col)
-                self.preview_tree.column(col, width=100)
-
-            for index, row in preview.iterrows():
-                self.preview_tree.insert("", "end", values=list(row))
-
-            self.preview_tree.pack(pady=10)
+            # 存儲加載的資料框
+            self.df = df
+            self.update_progress(100, complete=True)
         except Exception as e:
-            self.show_error(e, None)
+            self.root.after(0, self.show_error, str(e), None)
+
+    def destroy_result_tree(self):
+        if self.result_tree:
+            self.result_tree.destroy()
+            self.result_tree = None
 
     def load_data(self, file_path):
         try:
+            chunks = []
+            chunk_size = 10000
+            total_rows = 0
             if file_path.endswith(".csv"):
-                df = pd.read_csv(file_path)
+                total_size = sum(1 for _ in open(file_path))
+                for chunk in pd.read_csv(file_path, chunksize=chunk_size, low_memory=False):
+                    chunks.append(chunk)
+                    total_rows += len(chunk)
+                    self.update_progress(total_rows, total_size)
             elif file_path.endswith(".txt"):
                 with open(file_path, "r") as file:
-                    first_line = file.readline()
-                    delimiter = (
-                        "," if first_line.count(",") > first_line.count("\t") else "\t"
-                    )
-                df = pd.read_csv(file_path, delimiter=delimiter)
+                    sample = file.read(1024)
+                    sniffer = csv.Sniffer()
+                    delimiter = sniffer.sniff(sample).delimiter
+                total_size = sum(1 for _ in open(file_path))
+                for chunk in pd.read_csv(file_path, delimiter=delimiter, chunksize=chunk_size, low_memory=False):
+                    chunks.append(chunk)
+                    total_rows += len(chunk)
+                    self.update_progress(total_rows, total_size)
+            df = pd.concat(chunks, ignore_index=True)
             return df
         except Exception as e:
             self.show_error(e, None)
+
+    def update_progress(self, value, total_size=None, complete=False):
+        if complete:
+            self.root.after(0, self.progress.configure, {'value': 100, 'maximum': 100})
+        else:
+            percent = (value / total_size) * 100 if total_size else value
+            self.root.after(0, self.progress.configure, {'value': percent, 'maximum': 100})
+
+    def analyze(self):
+        if self.df is not None:
+            self.show_treeview(self.df)
+
+    def show_treeview(self, df):
+        if self.result_tree:
+            self.result_tree.destroy()
+
+        self.result_tree = ttk.Treeview(self.root)
+        self.result_tree["columns"] = list(df.columns)
+        self.result_tree["show"] = "headings"
+
+        for col in self.result_tree["columns"]:
+            self.result_tree.heading(col, text=col)
+            self.result_tree.column(col, width=100)
+
+        # for index, row in df.iterrows():
+        for index, row in df.head(10).iterrows():
+            self.result_tree.insert("", "end", values=list(row))
+
+        self.result_tree.pack(pady=10)
 
     def show_error(self, error_message, widget):
         if not self.error_window_open:  # 檢查是否已有錯誤窗口打開
@@ -227,7 +255,7 @@ class CSVAnalyzer:
         window.destroy()
         self.error_window_open = False  # 重置錯誤窗口標誌
         if widget:
-            widget.focus_set()  # 重新设置焦点到触发事件的控件上
+            widget.focus_set()  # 重新設置焦點到觸發事件的控件上
         self.reset_all_ranges()
 
     def reset_all_ranges(self):
