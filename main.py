@@ -4,6 +4,9 @@ import pandas as pd
 import csv
 import threading
 
+# 自訂分析模組
+import analysis
+
 
 class NumericEntry(tk.Entry):
     def __init__(self, master=None, **kwargs):
@@ -139,17 +142,17 @@ class CSVAnalyzer:
         )
         self.depth_anomaly_check.pack(pady=5)
 
-        # TPU 範圍
-        self.tpu_range_frame = RangeFrame(
-            self.extra_options_frame, text="TPU range", error_callback=self.show_error
-        )
-        self.tpu_range_frame.pack(pady=5)
-
         # THU 範圍
         self.thu_range_frame = RangeFrame(
             self.extra_options_frame, text="THU range", error_callback=self.show_error
         )
         self.thu_range_frame.pack(pady=5)
+
+        # TVU 範圍
+        self.tvu_range_frame = RangeFrame(
+            self.extra_options_frame, text="TVU range", error_callback=self.show_error
+        )
+        self.tvu_range_frame.pack(pady=5)
 
         self.analyze_button = tk.Button(self.root, text="Analyze", command=self.analyze)
         self.analyze_button.pack(pady=10)
@@ -191,7 +194,7 @@ class CSVAnalyzer:
             total_rows = 0
             if file_path.endswith(".csv"):
                 total_size = sum(1 for _ in open(file_path))
-                for chunk in pd.read_csv(file_path, chunksize=chunk_size, low_memory=False):
+                for chunk in pd.read_csv(file_path, header=None, chunksize=chunk_size, low_memory=False):
                     chunks.append(chunk)
                     total_rows += len(chunk)
                     self.update_progress(total_rows, total_size)
@@ -201,11 +204,12 @@ class CSVAnalyzer:
                     sniffer = csv.Sniffer()
                     delimiter = sniffer.sniff(sample).delimiter
                 total_size = sum(1 for _ in open(file_path))
-                for chunk in pd.read_csv(file_path, delimiter=delimiter, chunksize=chunk_size, low_memory=False):
+                for chunk in pd.read_csv(file_path, delimiter=delimiter, header=None, chunksize=chunk_size, low_memory=False):
                     chunks.append(chunk)
                     total_rows += len(chunk)
                     self.update_progress(total_rows, total_size)
             df = pd.concat(chunks, ignore_index=True)
+
             return df
         except Exception as e:
             self.show_error(e, None)
@@ -219,23 +223,40 @@ class CSVAnalyzer:
 
     def analyze(self):
         if self.df is not None:
-            self.show_treeview(self.df)
+            params = self.collect_params()
+            results, columns = analysis.analyze_data(self.df, params)  # 調用分析模組中的函數，返回結果和列名
+            self.show_treeview(results, columns)  # 顯示分析結果
 
-    def show_treeview(self, df):
+    # 把UI上面的選擇項目轉成字典
+    def collect_params(self):
+        params = {
+            "selected_option": self.selected_option.get(),
+            "depth_anomaly": self.depth_anomaly_var.get(),
+            "thu_range": (
+                self.thu_range_frame.start_entry.var.get(),
+                self.thu_range_frame.end_entry.var.get()
+            ) if self.thu_range_frame.var.get() else (None, None),
+            "tvu_range": (
+                self.tvu_range_frame.start_entry.var.get(),
+                self.tvu_range_frame.end_entry.var.get()
+            ) if self.tvu_range_frame.var.get() else (None, None)
+        }
+        return params
+
+    def show_treeview(self, results, columns):
         if self.result_tree:
             self.result_tree.destroy()
 
         self.result_tree = ttk.Treeview(self.root)
-        self.result_tree["columns"] = list(df.columns)
+        self.result_tree["columns"] = columns
         self.result_tree["show"] = "headings"
 
         for col in self.result_tree["columns"]:
             self.result_tree.heading(col, text=col)
             self.result_tree.column(col, width=100)
 
-        # for index, row in df.iterrows():
-        for index, row in df.head(10).iterrows():
-            self.result_tree.insert("", "end", values=list(row))
+        for row in results:
+            self.result_tree.insert("", "end", values=row)
 
         self.result_tree.pack(pady=10)
 
@@ -259,10 +280,10 @@ class CSVAnalyzer:
         self.reset_all_ranges()
 
     def reset_all_ranges(self):
-        if hasattr(self, 'tpu_range_frame'):
-            self.tpu_range_frame.reset_validation()
         if hasattr(self, 'thu_range_frame'):
             self.thu_range_frame.reset_validation()
+        if hasattr(self, 'tvu_range_frame'):
+            self.tvu_range_frame.reset_validation()
 
 
 if __name__ == "__main__":
