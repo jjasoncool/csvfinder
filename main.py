@@ -255,8 +255,8 @@ class CSVAnalyzer:
             self.result_tree.heading(col, text=col)
             self.result_tree.column(col, width=100)
 
-        for row in results:
-            self.result_tree.insert("", "end", values=row)
+        for index, row in results.iterrows():
+            self.result_tree.insert("", "end", values=tuple(row))
 
         self.result_tree.pack(pady=10)
 
