@@ -4,7 +4,10 @@ import numpy as np
 import pandas as pd
 
 def add_filter_note_column(df, note):
-    df['_filter_note'] = note
+    if df.empty:
+        print("DataFrame is empty, skipping note addition.")
+        return df
+    df.loc[:, '_filter_note'] = note
     return df
 
 def check_depth_anomalies(df):
@@ -13,7 +16,7 @@ def check_depth_anomalies(df):
     std_depth = df['Depth'].std()
 
     # 找出超過三個標準差的值
-    anomalies = df[(df['Depth'] < (mean_depth - 3 * std_depth)) | (df['Depth'] > (mean_depth + 3 * std_depth))]
+    anomalies = df[(df['Depth'] < (mean_depth - 10 * std_depth)) | (df['Depth'] > (mean_depth + 10 * std_depth))]
     return anomalies
 
 def filter_by_range(df, column, range_values):

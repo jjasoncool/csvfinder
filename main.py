@@ -224,7 +224,12 @@ class CSVAnalyzer:
     def analyze(self):
         if self.df is not None:
             params = self.collect_params()
-            results, columns = analysis.analyze_data(self.df, params)  # 調用分析模組中的函數，返回結果和列名
+            # 調用分析模組中的函數，返回結果和列名
+            results, columns = analysis.analyze_data(self.df, params)
+            # 新增檔案名稱到每一行的第一列
+            results.insert(0, 'Filename', self.file_path.split('/')[-1])  # 只取檔名，不要完整路徑
+            # 新增 "Filename" 欄位到 columns 的第一個位置
+            columns.insert(0, 'Filename')
             self.show_treeview(results, columns)  # 顯示分析結果
 
     # 把UI上面的選擇項目轉成字典
@@ -257,6 +262,15 @@ class CSVAnalyzer:
 
         for index, row in results.iterrows():
             self.result_tree.insert("", "end", values=tuple(row))
+
+        for col in self.result_tree["columns"]:
+            # 忽略 NaN 值
+            valid_lengths = results[col].dropna().astype(str).map(len)
+            if not valid_lengths.empty:
+                max_len = max(valid_lengths.max(), len(col)) + 2
+            else:
+                max_len = len(col) + 2
+            self.result_tree.column(col, width=max_len * 10, anchor=tk.CENTER)
 
         self.result_tree.pack(pady=10)
 
