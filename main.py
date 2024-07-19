@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import filedialog, ttk
 import pandas as pd
@@ -91,11 +92,13 @@ class CSVAnalyzer:
     def __init__(self, root):
         self.root = root
         self.root.title("CSV Analyzer")
-        self.file_path = ""
+        self.folder_path = ""
         self.selected_option = tk.StringVar(value="SwathAngle")
         # 添加錯誤窗口狀態標誌
         self.error_window_open = False
         self.df = None
+        # treeview columns
+        self.columns = None
         self.create_widgets()
 
     # 主要設計UI的位置
@@ -104,16 +107,13 @@ class CSVAnalyzer:
         top_frame = tk.Frame(self.root)
         top_frame.pack(pady=10, padx=10, fill="x")
 
-        self.label = tk.Label(top_frame, text="No file selected", anchor="w")
+        self.label = tk.Label(top_frame, text="No folder selected", anchor="w")
         self.label.pack(side="left", padx=10, fill="x", expand=True)
 
         self.browse_button = tk.Button(
-            top_frame, text="Browse CSV/TXT", command=self.browse_csv
+            top_frame, text="Browse Folder", command=self.browse_folder
         )
         self.browse_button.pack(side="left")
-
-        self.progress = ttk.Progressbar(self.root, orient=tk.HORIZONTAL, length=300, mode='determinate')
-        self.progress.pack(pady=10, fill='x', expand=True)
 
         # 選擇框的標籤和選擇框在同一列上
         selector_frame = tk.Frame(self.root)
@@ -154,8 +154,11 @@ class CSVAnalyzer:
         )
         self.tvu_range_frame.pack(pady=5)
 
-        self.analyze_button = tk.Button(self.root, text="Analyze", command=self.analyze)
+        self.analyze_button = tk.Button(self.root, text="Analyze", command=lambda: threading.Thread(target=self.analyze_and_show_data).start())
         self.analyze_button.pack(pady=10)
+
+        self.progress = ttk.Progressbar(self.root, orient=tk.HORIZONTAL, length=300, mode='determinate')
+        self.progress.pack(pady=10, fill='x', expand=True)
 
         self.result_tree = None
 
@@ -165,22 +168,55 @@ class CSVAnalyzer:
         else:
             self.extra_options_frame.pack_forget()
 
-    def browse_csv(self):
-        self.file_path = filedialog.askopenfilename(
-            filetypes=[("CSV and TXT files", "*.csv *.txt")]
-        )
-        self.label.config(text=f"Selected file: {self.file_path}")
-        threading.Thread(target=self.load_and_show_data).start()
+    def browse_folder(self):
+        self.folder_path = filedialog.askdirectory()
+        self.label.config(text=f"Selected folder: {self.folder_path}")
 
-    def load_and_show_data(self):
+    def analyze_and_show_data(self):
         self.root.after(0, self.destroy_result_tree)
         try:
-            df = self.load_data(self.file_path)
-            # 存儲加載的資料框
-            self.df = df
-            self.update_progress(100, complete=True)
+            files = [os.path.join(self.folder_path, f) for f in os.listdir(self.folder_path) if f.endswith(('.csv', '.txt'))]
+            all_results = []
+            threads = []
+
+            for file_path in files:
+                thread = threading.Thread(target=self.process_file, args=(file_path, all_results))
+                thread.start()
+                threads.append(thread)
+
+            for thread in threads:
+                thread.join()
+
+            if all_results:
+                final_results = pd.concat(all_results).drop_duplicates().reset_index(drop=True)
+                print(final_results)
+                self.update_progress(100, complete=True)
+                if self.columns is not None:
+                    columns = self.columns
+                else:
+                    columns = ['Filename'] + final_results.columns.tolist()
+                self.show_treeview(final_results, columns)
+            else:
+                self.update_progress(100, complete=True)
+                self.show_error("No valid files processed", None)
         except Exception as e:
             self.root.after(0, self.show_error, str(e), None)
+
+
+    def process_file(self, file_path, all_results):
+        try:
+        # 存儲加載的資料框
+            df = self.load_data(file_path)
+            params = self.collect_params()
+            results, columns = analysis.analyze_data(df, params)
+            # 新增檔案名稱到每一行的第一列
+            results.insert(0, 'Filename', os.path.basename(file_path))
+            all_results.append(results)
+            if self.columns is None:
+                self.columns = ['Filename'] + columns
+
+        except Exception as e:
+            self.root.after(0, self.show_error, f"Error processing file {file_path}: {str(e)}", None)
 
     def destroy_result_tree(self):
         if self.result_tree:
@@ -209,8 +245,8 @@ class CSVAnalyzer:
                     total_rows += len(chunk)
                     self.update_progress(total_rows, total_size)
             df = pd.concat(chunks, ignore_index=True)
-
             return df
+
         except Exception as e:
             self.show_error(e, None)
 
@@ -220,17 +256,6 @@ class CSVAnalyzer:
         else:
             percent = (value / total_size) * 100 if total_size else value
             self.root.after(0, self.progress.configure, {'value': percent, 'maximum': 100})
-
-    def analyze(self):
-        if self.df is not None:
-            params = self.collect_params()
-            # 調用分析模組中的函數，返回結果和列名
-            results, columns = analysis.analyze_data(self.df, params)
-            # 新增檔案名稱到每一行的第一列
-            results.insert(0, 'Filename', self.file_path.split('/')[-1])  # 只取檔名，不要完整路徑
-            # 新增 "Filename" 欄位到 columns 的第一個位置
-            columns.insert(0, 'Filename')
-            self.show_treeview(results, columns)  # 顯示分析結果
 
     # 把UI上面的選擇項目轉成字典
     def collect_params(self):
