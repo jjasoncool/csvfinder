@@ -65,11 +65,11 @@ def analyze_data(df, params):
         expected_columns = 5
         columns = ['Longitude', 'Latitude', 'Depth', 'THU', 'TVU']
     else:
-        return "Invalid option selected", []
+        raise ValueError("Invalid option selected")
 
     # 檢查欄位數量是否符合
     if len(df.columns) != expected_columns:
-        return f"Expected {len(expected_columns)} columns, but got {len(df.columns)}", []
+        raise ValueError(f"Expected {expected_columns} columns, but got {len(df.columns)}")
 
     # 重新命名欄位
     df.columns = columns

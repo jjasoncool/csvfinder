@@ -216,7 +216,7 @@ class CSVAnalyzer:
                 self.columns = ['Filename'] + columns
 
         except Exception as e:
-            self.root.after(0, self.show_error, f"Error processing file {file_path}: {str(e)}", None)
+            self.root.after(0, self.show_error, f"Error processing file {file_path}:\n {str(e)}", None)
 
     def destroy_result_tree(self):
         if self.result_tree:
