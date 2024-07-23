@@ -4,6 +4,7 @@ from tkinter import filedialog, ttk
 import pandas as pd
 import csv
 import threading
+import traceback
 
 # 自訂分析模組
 import analysis
@@ -202,6 +203,8 @@ class CSVAnalyzer:
                 self.show_error("No valid files processed", None)
         except Exception as e:
             self.root.after(0, self.show_error, str(e), None)
+            print(f"Error during analyze and show data: {e}")
+            traceback.print_exc()
 
 
     def process_file(self, file_path, all_results):
@@ -226,9 +229,13 @@ class CSVAnalyzer:
 
         except Exception as e:
             self.root.after(0, self.show_error, f"Error processing file {file_path}:\n {str(e)}", None)
+            print(f"Error processing file {file_path}: {e}")
+            traceback.print_exc()
 
     def destroy_result_tree(self):
         if self.result_tree:
+            # 也必須重設 columns 的值
+            self.columns = None
             self.result_tree.destroy()
             self.result_tree = None
 
@@ -258,6 +265,8 @@ class CSVAnalyzer:
 
         except Exception as e:
             self.show_error(e, None)
+            print(f"Error loading data from file {file_path}: {e}")
+            traceback.print_exc()
 
     def update_progress(self, value, total_size=None, complete=False):
         if complete:
