@@ -175,7 +175,8 @@ class CSVAnalyzer:
     def analyze_and_show_data(self):
         self.root.after(0, self.destroy_result_tree)
         try:
-            files = [os.path.join(self.folder_path, f) for f in os.listdir(self.folder_path) if f.endswith(('.csv', '.txt'))]
+            files = [os.path.join(self.folder_path, f) for f in os.listdir(self.folder_path) if f.endswith(('.csv', '.txt')) and not f.startswith('error_')]
+
             all_results = []
             threads = []
 
@@ -189,7 +190,7 @@ class CSVAnalyzer:
 
             if all_results:
                 final_results = pd.concat(all_results).drop_duplicates().reset_index(drop=True)
-                print(final_results)
+                print("final results:", final_results)
                 self.update_progress(100, complete=True)
                 if self.columns is not None:
                     columns = self.columns
@@ -209,8 +210,16 @@ class CSVAnalyzer:
             df = self.load_data(file_path)
             params = self.collect_params()
             results, columns = analysis.analyze_data(df, params)
+            print("result:", results)
             # 新增檔案名稱到每一行的第一列
             results.insert(0, 'Filename', os.path.basename(file_path))
+
+            # 檢查結果是否為空或包含特定消息
+            if not results.empty and not (results.shape[1] == 2 and 'Message' in results.columns and results.at[0, 'Message'] == '查無異常資料'):
+                # 保存新的文件
+                new_file_path = os.path.join(os.path.dirname(file_path), 'error_' + os.path.basename(file_path))
+                results.to_csv(new_file_path, index=False)
+
             all_results.append(results)
             if self.columns is None:
                 self.columns = ['Filename'] + columns
