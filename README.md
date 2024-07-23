@@ -1,6 +1,3 @@
-# This project is for Windows only
-because we are using win32api
-
 # Conda
 ## rebuild the conda env
 - First, change to the project path
@@ -28,7 +25,3 @@ because we are using win32api
 - `pyinstaller --onefile main.py`
 ## build executable file
 - `pyinstaller main.spec --clean`
-
-# Pytest
-## test some test scripts
-- `pytest ./test/test_draw_edge.py`
