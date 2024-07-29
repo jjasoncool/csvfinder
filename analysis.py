@@ -106,8 +106,14 @@ def analyze_data(df, params):
             filtered_dfs.append(add_filter_note_column(filtered_df, "tvu_range"))
 
     if filtered_dfs:
+        # 設定資料量上限
+        max_data_limit = 10000  # 可根據需求調整這個閾值
         # 聯集所有過濾結果並移除重複值
         df = pd.concat(filtered_dfs).drop_duplicates().reset_index(drop=True)
+        # 檢查總行數
+        total_records = len(df)
+        if total_records > max_data_limit:
+            raise ValueError(f"錯誤資料過多，共有 {total_records} 筆資料，請確認檢查區間輸入是否正確")
     else:
         columns = ['Message']
         df = pd.DataFrame(columns=['Message'])
